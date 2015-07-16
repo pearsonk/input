@@ -578,23 +578,71 @@ switcher_switch_right(void)
   go_to_slot((void*)(current->slot + 1));
 }
 
+/**
+ * Apply the default switcher keybinds for switching to VM slots:
+ *   e.g. CTRL+1 to switch to VM in slot 1
+ *        CTRL+0 to switch to UIVM
+ */
+void
+apply_default_switcher_binds(void)
+{
+  int i;
+
+  for (i = 0; i < 10; i++)
+  {
+    int left[] = { KEY_LEFTCTRL, i ? KEY_1 + (i - 1) : KEY_0, -1 };
+    int right[] = { KEY_RIGHTCTRL, i ? KEY_1 + (i - 1) : KEY_0, -1 };
+    input_add_binding (left, go_to_slot, force_go_to_slot, (void *) i);
+    input_add_binding (right, go_to_slot, force_go_to_slot, (void *) i);
+  }
+}
+
 void
 switcher_init (void)
 {
   int i;
   struct stat unused;
 
+  // Hold the value of the switcher key(s) to be used for binding
+  char switcherKeyBuf[32];
+
 #if 0
   xenstore_watch (switcher_watch_ac, NULL, "/pm/ac_adapter");
 #endif
 
-  for (i = 0; i < 10; i++)
+  // Get modifiers for switcher keys. If not set, apply the defaults
+  int ret = db_read(switcherKeyBuf, sizeof(switcherKeyBuf), "/switcher/switcher-key");
+  if ((ret == 0) || (strlen(switcherKeyBuf) == 0))
+  {
+    apply_default_switcher_binds();
+  }
+  else
+  {
+    //TODO: Support specification of multiple keys for binding
+    
+    // Parse the configured value to obtain switcher keycodes. For lookup: <header_root>/linux/input.h
+    char *strEnd;
+    long value = strtol(switcherKeyBuf, &strEnd, 0);
+
+    // Make sure the input value is somewhat valid without being too predictive.
+    if (value <= 0 || value > 240)
     {
-      int left[] = { KEY_LEFTCTRL, i ? KEY_1 + (i - 1) : KEY_0, -1 };
-      int right[] = { KEY_RIGHTCTRL, i ? KEY_1 + (i - 1) : KEY_0, -1 };
-      input_add_binding (left, go_to_slot, force_go_to_slot, (void *) i);
-      input_add_binding (right, go_to_slot, force_go_to_slot, (void *) i);
+      info ("Switcher-key value of %s is not a valid number (parsed as %d), using CTRL as default",switcherKeyBuf,value);
+      apply_default_switcher_binds();
     }
+    else
+    {
+      //TODO: Handle special left/right such as ctrl, alt? Or not...
+      
+      // Actually add the appropriate keybinds for the allowable slots
+      // using 1 through 0 on the keyboard
+      for (i = 0; i < 10; i++)
+      {
+        int binds[] = { (int)value, i ? KEY_1 + (i - 1) : KEY_0, -1};
+        input_add_binding (binds, go_to_slot, force_go_to_slot, (void *) i);
+      }
+    }
+  }
 
   {
     int windows_alt[] = { KEY_LEFTMETA, KEY_LEFTALT, -1 };
